@@ -1,0 +1,5 @@
+--constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.0.4/constraints-3.11.txt"
+apache-airflow==3.0.4
+apache-airflow-providers-fab
+flask_appbuilder
+pandas
