@@ -37,3 +37,5 @@ __pycache__/
 .env.*
 hrp.db
 uv.lock
+
+alembic/*.log

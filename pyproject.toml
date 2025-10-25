@@ -9,4 +9,6 @@ dependencies = [
     "apache-airflow-providers-fab>=2.3.1",
     "flask-appbuilder>=4.6.3",
     "ipykernel>=7.0.1",
+    "logging>=0.4.9.6",
+    "quantstats>=0.0.77",
 ]

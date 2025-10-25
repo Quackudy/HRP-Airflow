@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import axios from 'axios'
+import api from '../api'
 import { Link } from 'react-router-dom'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -17,11 +17,9 @@ export default function Dashboard() {
     return null
   }
   
-  const auth = { headers: { Authorization: `Bearer ${token}` } }
-
   const load = async () => {
     try {
-      const res = await axios.get(`${API}/portfolios/`, auth)
+      const res = await api.get('/portfolios/')
       setPortfolios(res.data)
     } catch (err) {
       console.error('Failed to load portfolios:', err.response?.data || err.message)
@@ -41,7 +39,7 @@ export default function Dashboard() {
         ...form,
         stock_tickers: form.stock_tickers.split(',').map(s => s.trim()).filter(Boolean)
       }
-      await axios.post(`${API}/portfolios/`, payload, auth)
+  await api.post('/portfolios/', payload)
       setShowForm(false)
       setForm({ name: '', description: '', stock_tickers: '', objective_function: 'HRP', rebalance_interval: 'monthly' })
       load()

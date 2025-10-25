@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import axios from 'axios'
+import api from '../api'
 import { useParams } from 'react-router-dom'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -8,16 +8,24 @@ export default function Portfolio() {
   const { id } = useParams()
   const [portfolio, setPortfolio] = useState(null)
   const [metrics, setMetrics] = useState(null)
-  const token = localStorage.getItem('token')
-  const auth = { headers: { Authorization: `Bearer ${token}` } }
+  const [reportHtml, setReportHtml] = useState(null)
 
   const load = async () => {
     const [p, m] = await Promise.all([
-      axios.get(`${API}/portfolios/${id}`, auth),
-      axios.get(`${API}/portfolios/${id}/report`, auth)
+      api.get(`/portfolios/${id}`),
+      api.get(`/portfolios/${id}/report`)
     ])
     setPortfolio(p.data)
     setMetrics(m.data)
+
+    // Fetch HTML report via XHR so Authorization header is included (iframes can't set custom headers)
+    try {
+      const r = await api.get(`/portfolios/${id}/report/html`, { responseType: 'text' })
+      setReportHtml(r.data)
+    } catch (err) {
+      console.error('Failed to load HTML report:', err.response?.data || err.message)
+      setReportHtml('<p>Unable to load report</p>')
+    }
   }
 
   useEffect(() => { load() }, [id])
@@ -33,7 +41,11 @@ export default function Portfolio() {
         </div>
       )}
       <div style={{ marginTop: 16 }}>
-        <iframe title='report' src={`${API}/portfolios/${id}/report/html`} style={{ width: '100%', height: 600, border: '1px solid #ddd' }} />
+        {reportHtml ? (
+          <div style={{ width: '100%', border: '1px solid #ddd', padding: 8 }} dangerouslySetInnerHTML={{ __html: reportHtml }} />
+        ) : (
+          <div>Loading report...</div>
+        )}
       </div>
     </div>
   )

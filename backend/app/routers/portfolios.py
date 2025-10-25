@@ -1,20 +1,27 @@
 from datetime import datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import get_db, SessionLocal
 from ..deps import get_current_user
 from ..models import Portfolio
 from ..schemas import PortfolioCreate, PortfolioOut, PortfolioUpdate
+
+from ..tasks.optimizer import process_portfolio
 
 
 router = APIRouter()
 
 
 @router.post("/", response_model=PortfolioOut)
-def create_portfolio(payload: PortfolioCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def create_portfolio(
+    payload: PortfolioCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
     portfolio = Portfolio(
         user_id=user.id,
         name=payload.name,
@@ -22,11 +29,25 @@ def create_portfolio(payload: PortfolioCreate, db: Session = Depends(get_db), us
         stock_tickers=payload.stock_tickers,
         objective_function=payload.objective_function,
         rebalance_interval=payload.rebalance_interval,
+        period=payload.period,
         next_optimize_at=payload.next_optimize_at or datetime.now(timezone.utc),
     )
     db.add(portfolio)
     db.commit()
     db.refresh(portfolio)
+
+    # Run an initial optimization in the background using the shared task module.
+    # Use a fresh DB session inside the background task to avoid sharing request session.
+    def _run_initial(portfolio_id: int):
+        session = SessionLocal()
+        try:
+            result = process_portfolio(session, portfolio_id)
+            # We intentionally don't raise here; process_portfolio logs errors.
+        finally:
+            session.close()
+
+    background_tasks.add_task(_run_initial, portfolio.id)
+
     return portfolio
 
 

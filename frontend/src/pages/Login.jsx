@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import axios from 'axios'
+import api from '../api'
 import { useNavigate } from 'react-router-dom'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -21,8 +21,9 @@ export default function Login() {
       const params = new URLSearchParams()
       params.append('username', email)
       params.append('password', password)
-      const res = await axios.post(`${API}/auth/login`, params)
-      localStorage.setItem('token', res.data.access_token)
+  const res = await api.post('/auth/login', params)
+  // token will be stored locally; api interceptor will attach it to subsequent requests
+  localStorage.setItem('token', res.data.access_token)
       navigate('/')
     } catch (err) {
       setError(err?.response?.data?.detail || 'Error')

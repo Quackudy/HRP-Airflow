@@ -4,8 +4,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers import auth, portfolios, reports
 from .database import Base, engine
 
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="HRP Portfolio API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup
+    Base.metadata.create_all(bind=engine)
+    yield
+    
+
+app = FastAPI(title="HRP Portfolio API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,11 +32,5 @@ def root():
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(portfolios.router, prefix="/portfolios", tags=["portfolios"])
 app.include_router(reports.router, prefix="/portfolios", tags=["reports"])
-
-
-@app.on_event("startup")
-def on_startup():
-    # Create tables if not exist (for quickstart/dev). In prod, use Alembic migrations.
-    Base.metadata.create_all(bind=engine)
 
 

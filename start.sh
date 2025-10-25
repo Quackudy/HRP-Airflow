@@ -10,13 +10,16 @@ export JWT_ALGORITHM="HS256"
 
 # Prefer PostgreSQL, but fall back to SQLite if 5432 is not reachable
 if timeout 1 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/5432' 2>/dev/null; then
-  export DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/hrp"
-  echo "Using PostgreSQL at localhost:5432"
+    # PostgreSQL URLs for sync and async connections
+    export DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/hrp"
+    export ASYNC_DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/hrp"
+    echo "Using PostgreSQL at localhost:5432"
 else
-  export DATABASE_URL="sqlite:////mnt/c/Users/passa/VScodeProject/HRP/hrp.db"
-  echo "Postgres not reachable. Using SQLite at $DATABASE_URL for API only"
+    # SQLite URLs for sync and async connections
+    export DATABASE_URL="sqlite:///hrp.db"
+    export ASYNC_DATABASE_URL="sqlite+aiosqlite:///hrp.db"
+    echo "Postgres not reachable. Using SQLite at $DATABASE_URL"
 fi
-
 # Activate virtual environment
 source .venv/bin/activate
 

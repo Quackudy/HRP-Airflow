@@ -6,12 +6,16 @@ psycopg2-binary
 python-jose
 passlib[bcrypt]
 pydantic
+asyncpg
+aiosqlite
 
 # Data processing
 pandas
 yfinance
 riskfolio-lib
 quantstats
+
+logging
 
 # Airflow with constraints to avoid conflicts
 --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.0.4/constraints-3.11.txt"

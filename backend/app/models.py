@@ -24,6 +24,7 @@ class Portfolio(Base):
     stock_tickers = Column(JSON, nullable=False)
     objective_function = Column(Text, nullable=False)
     rebalance_interval = Column(Text, nullable=False)
+    period = Column(Text, nullable=True)
     last_optimized_at = Column(DateTime(timezone=True))
     next_optimize_at = Column(DateTime(timezone=True))
 

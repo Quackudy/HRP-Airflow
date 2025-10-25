@@ -5,35 +5,49 @@ from typing import List
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from sqlalchemy.orm import Session
+from sqlalchemy import select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import get_db
+from ..database import get_db, get_async_db
 from ..deps import get_current_user
 from ..models import Portfolio, PortfolioWeights, DailyPrice
 from ..schemas import ReportMetrics
 
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-def _get_latest_weights(db: Session, portfolio_id: int) -> PortfolioWeights:
-    return (
-        db.query(PortfolioWeights)
-        .filter(PortfolioWeights.portfolio_id == portfolio_id)
+async def _get_latest_weights(db: AsyncSession, portfolio_id: int) -> PortfolioWeights:
+    stmt = (
+        select(PortfolioWeights)
+        .where(PortfolioWeights.portfolio_id == portfolio_id)
         .order_by(PortfolioWeights.calculation_date.desc())
-        .first()
+        .limit(1)
     )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
-def _prices_df(db: Session, tickers: List[str]) -> pd.DataFrame:
-    q = (
-        db.query(DailyPrice)
-        .filter(DailyPrice.ticker.in_(tickers))
+async def _prices_df(db: AsyncSession, tickers: List[str]) -> pd.DataFrame:
+    stmt = (
+        select(DailyPrice)
+        .where(DailyPrice.ticker.in_(tickers))
         .order_by(DailyPrice.date.asc())
     )
-    rows = q.all()
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    
     if not rows:
         return pd.DataFrame()
+    
     df = pd.DataFrame([
         {
             "ticker": r.ticker,
@@ -47,15 +61,26 @@ def _prices_df(db: Session, tickers: List[str]) -> pd.DataFrame:
 
 
 @router.get("/{portfolio_id}/report", response_model=ReportMetrics)
-def report_metrics(portfolio_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id, Portfolio.user_id == user.id).first()
+async def report_metrics(
+    portfolio_id: int, 
+    db: AsyncSession = Depends(get_async_db),    # changed dependency
+    user=Depends(get_current_user)
+):
+    stmt = select(Portfolio).where(
+        and_(Portfolio.id == portfolio_id, Portfolio.user_id == user.id)
+    )
+    result = await db.execute(stmt)
+    portfolio = result.scalar_one_or_none()
+    
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
-    weights_row = _get_latest_weights(db, portfolio_id)
+    
+    weights_row = await _get_latest_weights(db, portfolio_id)
     if not weights_row:
         raise HTTPException(status_code=404, detail="No weights available")
+    
     tickers = list(weights_row.weights.keys())
-    prices = _prices_df(db, tickers)
+    prices = await _prices_df(db, tickers)
     if prices.empty:
         raise HTTPException(status_code=404, detail="No price data")
 
@@ -70,33 +95,84 @@ def report_metrics(portfolio_id: int, db: Session = Depends(get_db), user=Depend
     days = (prices.index[-1] - prices.index[0]).days or 1
     cagr = (cum.iloc[-1]) ** (365.0 / days) - 1.0
 
-    return ReportMetrics(sharpe=float(sharpe), max_drawdown=float(max_dd), cagr=float(cagr))
+    # Return computed metrics plus the latest weights
+    return ReportMetrics(
+        sharpe=float(sharpe),
+        max_drawdown=float(max_dd),
+        cagr=float(cagr),
+        weights={k: float(v) for k, v in weights_row.weights.items()}
+    )
 
+
+import tempfile
+import os
 
 @router.get("/{portfolio_id}/report/html", response_class=HTMLResponse)
-def report_html(portfolio_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id, Portfolio.user_id == user.id).first()
+async def report_html(
+    portfolio_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    user=Depends(get_current_user)
+):
+    stmt = select(Portfolio).where(
+        and_(Portfolio.id == portfolio_id, Portfolio.user_id == user.id)
+    )
+    result = await db.execute(stmt)
+    portfolio = result.scalar_one_or_none()
+    
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
-    weights_row = _get_latest_weights(db, portfolio_id)
+    
+    weights_row = await _get_latest_weights(db, portfolio_id)
     if not weights_row:
         raise HTTPException(status_code=404, detail="No weights available")
+    
     tickers = list(weights_row.weights.keys())
-    prices = _prices_df(db, tickers)
+    prices = await _prices_df(db, tickers)
     if prices.empty:
         raise HTTPException(status_code=404, detail="No price data")
 
     try:
         import quantstats as qs  # type: ignore
-
+        
+        # Calculate returns
         returns = prices.pct_change().dropna()
         portfolio_returns = (returns * pd.Series(weights_row.weights)).sum(axis=1)
-        buf = io.StringIO()
-        qs.reports.html(portfolio_returns, title=f"Portfolio {portfolio.id}", output=buf, download_filename=None)
-        html = buf.getvalue()
-    except Exception:
-        html = "<html><body><h1>Report</h1><p>quantstats not available.</p></body></html>"
+        portfolio_returns.index = pd.to_datetime(portfolio_returns.index)
+        portfolio_returns = portfolio_returns[~portfolio_returns.index.duplicated(keep='first')]
+        portfolio_returns = portfolio_returns.sort_index()
+        
+        # Create temporary file for output
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as tmp:
+            tmp_path = tmp.name
+        
+        try:
+            # Generate report to temporary file
+            qs.reports.html(
+                portfolio_returns, 
+                title=portfolio.name,
+                output=tmp_path,
+                download_filename=None
+            )
+            
+            # Read the generated HTML
+            with open(tmp_path, 'r', encoding='utf-8') as f:
+                html = f.read()
+        finally:
+            # Clean up temporary file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        
+    except Exception as e:
+        logger.error(f"QuantStats report generation failed: {e}", exc_info=True)
+        html = f"""
+        <html>
+        <head><title>Portfolio Report Error</title></head>
+        <body>
+            <h1>Portfolio Report Generation Failed</h1>
+            <p>Unable to generate quantstats report.</p>
+            <p>Error: {str(e)}</p>
+        </body>
+        </html>
+        """
 
     return HTMLResponse(content=html)
-
-

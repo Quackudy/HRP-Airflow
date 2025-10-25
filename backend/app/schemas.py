@@ -28,6 +28,7 @@ class PortfolioBase(BaseModel):
     stock_tickers: List[str]
     objective_function: str
     rebalance_interval: str
+    period: str
     next_optimize_at: Optional[datetime] = None
 
 
@@ -57,6 +58,8 @@ class ReportMetrics(BaseModel):
     sharpe: float
     max_drawdown: float
     cagr: float
+    weights: Dict[str, float]
+    
 
 
 class PortfolioWeightsOut(BaseModel):
