@@ -122,12 +122,10 @@ def run_hrp_for_returns(returns: pd.DataFrame, config: Optional[dict] = None) ->
             max_k=config.get("max_k", 10),
             leaf_order=config.get("leaf_order", True),
         )
-        # w is a DataFrame with weights; convert to dict
-        # Depending on riskfolio version, index may be tickers or a column
+     
         if hasattr(w, "index"):
             weights = {str(idx): float(w.loc[idx][0]) for idx in w.index}
         else:
-            # fallback: try to convert directly
             weights = {col: float(w[col].iloc[0]) for col in w.columns}
         return weights
     except Exception:

@@ -36,13 +36,11 @@ def create_portfolio(
     db.commit()
     db.refresh(portfolio)
 
-    # Run an initial optimization in the background using the shared task module.
-    # Use a fresh DB session inside the background task to avoid sharing request session.
     def _run_initial(portfolio_id: int):
         session = SessionLocal()
         try:
             result = process_portfolio(session, portfolio_id)
-            # We intentionally don't raise here; process_portfolio logs errors.
+
         finally:
             session.close()
 

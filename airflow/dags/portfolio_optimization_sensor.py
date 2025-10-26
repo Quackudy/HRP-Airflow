@@ -42,7 +42,6 @@ def portfolio_optimization_sensor():
     ).expand(conf=confs)
 
 
-# Instantiate the DAG
 portfolio_optimization_sensor()
 
 

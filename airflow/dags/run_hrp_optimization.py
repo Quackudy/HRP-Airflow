@@ -1,11 +1,10 @@
 import os
-import json
+import json  # <--- Import JSON module
 import pandas as pd
 import pendulum
-from datetime import timezone, timedelta
+from datetime import datetime, timezone, timedelta  # <--- Import datetime
 from airflow.sdk import dag, task
 from sqlalchemy import create_engine, text
-
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://postgres:postgres@localhost:5432/hrp")
 engine = create_engine(DATABASE_URL)
@@ -19,7 +18,7 @@ def _rebalance_delta(interval: str) -> timedelta:
         'monthly': timedelta(days=30),
         'quarterly': timedelta(days=90),
     }
-    return mapping.get(interval, timedelta(days=30))
+    return mapping.get(str(interval).lower(), timedelta(days=30))
 
 
 @dag(
@@ -47,9 +46,16 @@ def run_hrp_optimization():
             if not row:
                 raise ValueError(f"Portfolio {portfolio_id} not found")
             
+            try:
+                tickers_list = json.loads(row["stock_tickers"])
+                if not isinstance(tickers_list, list):
+                    tickers_list = []
+            except (json.JSONDecodeError, TypeError):
+                tickers_list = []
+            
             return {
                 "id": row["id"],
-                "tickers": row["stock_tickers"],
+                "tickers": tickers_list, 
                 "objective": row["objective_function"],
                 "interval": row["rebalance_interval"]
             }
@@ -57,44 +63,63 @@ def run_hrp_optimization():
     @task()
     def get_price_data(tickers: list):
         """Get historical price data for portfolio tickers."""
+        if not tickers:
+            raise ValueError("No tickers provided from portfolio config")
+        
         with engine.connect() as conn:
-            # SQLite-compatible query using IN clause instead of ANY
-            placeholders = ','.join(['?' for _ in tickers])
+
+            placeholders = {f'tic_{i}': ticker for i, ticker in enumerate(tickers)}
+            param_names = ', '.join(placeholders.keys())
+            
             prices = conn.execute(text(f"""
                 SELECT ticker, date, COALESCE(adj_close, close) AS close
                 FROM daily_prices
-                WHERE ticker IN ({placeholders})
+                WHERE ticker IN ({param_names})
                 ORDER BY date ASC
-                """
-            ), tickers).mappings().all()
+            """), placeholders).mappings().all()
             
             if not prices:
-                raise ValueError("No price data available")
+                raise ValueError(f"No price data available for tickers: {tickers}")
             
             df = pd.DataFrame(prices)
-            price_pivot = df.pivot(index="date", columns="ticker", values="close").dropna(how='all')
-            returns = price_pivot.pct_change().dropna()
+            price_pivot = df.pivot(index="date", columns="ticker", values="close").fillna(method='ffill')
             
+            price_pivot = price_pivot.reindex(columns=tickers).dropna(axis=1, how='all')
+
+            if price_pivot.empty:
+                 raise ValueError(f"Price data pivot is empty for tickers: {tickers}")
+                 
+            returns = price_pivot.pct_change().dropna(how='all')
+            
+            if returns.empty:
+                 raise ValueError(f"Returns calculation resulted in empty dataframe for tickers: {tickers}")
+
             return returns
 
     @task()
     def run_hrp_optimization(returns: pd.DataFrame, portfolio_config: dict):
         """Run HRP optimization using riskfolio-lib."""
         try:
-            import riskfolio as rp  # type: ignore
+            import riskfolio as rp  
             
             port = rp.Portfolio(returns=returns)
-            port.assets_stats(method_mu='hist', method_cov='ledoit', d=0.94)
-            weights = port.hrp_portfolio(leaf_order=True)
-            weights_dict = weights.squeeze().to_dict()
+            model = portfolio_config.get("objective", "HRP") 
+            w = port.optimization(
+                model=model,
+                rm='MV',
+                rf=0, 
+                leaf_order=True
+            )
             
+            weights_dict = w.squeeze().to_dict()
+        
             return {
                 "weights": weights_dict,
-                "method": "HRP",
+                "method": model,
                 "success": True
             }
         except Exception as e:
-            # Fallback: equal weights
+
             n = len(returns.columns)
             weights_dict = {ticker: 1.0 / n for ticker in returns.columns}
             
@@ -109,8 +134,9 @@ def run_hrp_optimization():
     def save_weights_and_schedule(portfolio_id: int, optimization_result: dict, portfolio_config: dict):
         """Save optimization weights and update portfolio schedule."""
         with engine.begin() as conn:
-            # Save weights with current timestamp
-            now_ts = datetime.now(timezone.utc).isoformat()
+
+            now = datetime.now(timezone.utc)
+            
             conn.execute(text(
                 """
                 INSERT INTO portfolio_weights (portfolio_id, calculation_date, weights)
@@ -118,20 +144,20 @@ def run_hrp_optimization():
                 """
             ), {
                 "pid": portfolio_id,
-                "calc_date": now_ts,
+                "calc_date": now,
                 "weights": json.dumps(optimization_result["weights"])
             })
             
-            # Update portfolio schedule with computed timestamps
             delta = _rebalance_delta(portfolio_config["interval"])
-            next_ts = (datetime.now(timezone.utc) + delta).isoformat()
+            next_ts = (now + delta)
+            
             conn.execute(text(
                 """
                 UPDATE portfolios
                 SET last_optimized_at = :now_ts, next_optimize_at = :next_ts
                 WHERE id = :pid
                 """
-            ), {"pid": portfolio_id, "now_ts": now_ts, "next_ts": next_ts})
+            ), {"pid": portfolio_id, "now_ts": now, "next_ts": next_ts})
         
         return {
             "portfolio_id": portfolio_id,
@@ -140,24 +166,17 @@ def run_hrp_optimization():
             "success": optimization_result["success"]
         }
 
-    # Build the flow - this DAG expects portfolio_id from trigger context
-    # Note: In TaskFlow, we need to handle the trigger context differently
-    # For now, we'll create a simple task that gets the portfolio_id from context
-    
     @task()
-    def get_portfolio_id_from_context():
+    def get_portfolio_id_from_context(dag_run=None):
         """Extract portfolio_id from DAG run context."""
-        from airflow.sdk import get_current_context
-        context = get_current_context()
-        conf = context.get('dag_run', {}).get('conf', {})
+        conf = dag_run.conf if dag_run else {}
         portfolio_id = conf.get('portfolio_id')
         
         if not portfolio_id:
             raise ValueError("portfolio_id is required in DAG run configuration")
         
-        return portfolio_id
+        return int(portfolio_id)
 
-    # Build the flow
     portfolio_id = get_portfolio_id_from_context()
     portfolio_config = get_portfolio_config(portfolio_id)
     returns = get_price_data(portfolio_config["tickers"])
@@ -165,7 +184,4 @@ def run_hrp_optimization():
     final_result = save_weights_and_schedule(portfolio_id, optimization_result, portfolio_config)
 
 
-# Instantiate the DAG
 run_hrp_optimization()
-
-

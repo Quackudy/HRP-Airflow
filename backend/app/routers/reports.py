@@ -16,7 +16,7 @@ from ..schemas import ReportMetrics
 import logging
 
 logging.basicConfig(
-    level=logging.INFO,  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
@@ -63,7 +63,7 @@ async def _prices_df(db: AsyncSession, tickers: List[str]) -> pd.DataFrame:
 @router.get("/{portfolio_id}/report", response_model=ReportMetrics)
 async def report_metrics(
     portfolio_id: int, 
-    db: AsyncSession = Depends(get_async_db),    # changed dependency
+    db: AsyncSession = Depends(get_async_db), 
     user=Depends(get_current_user)
 ):
     stmt = select(Portfolio).where(
@@ -84,7 +84,6 @@ async def report_metrics(
     if prices.empty:
         raise HTTPException(status_code=404, detail="No price data")
 
-    # Compute metrics using log returns and simple approximations if quantstats not available
     returns = prices.pct_change().dropna()
     portfolio_returns = (returns * pd.Series(weights_row.weights)).sum(axis=1)
     sharpe = portfolio_returns.mean() / portfolio_returns.std() * (252 ** 0.5) if portfolio_returns.std() != 0 else 0.0
@@ -95,7 +94,6 @@ async def report_metrics(
     days = (prices.index[-1] - prices.index[0]).days or 1
     cagr = (cum.iloc[-1]) ** (365.0 / days) - 1.0
 
-    # Return computed metrics plus the latest weights
     return ReportMetrics(
         sharpe=float(sharpe),
         max_drawdown=float(max_dd),
@@ -132,7 +130,7 @@ async def report_html(
         raise HTTPException(status_code=404, detail="No price data")
 
     try:
-        import quantstats as qs  # type: ignore
+        import quantstats as qs 
         
         # Calculate returns
         returns = prices.pct_change().dropna()
