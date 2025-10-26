@@ -22,6 +22,7 @@ data/
 *.json
 
 **/node_modules/
+**/.next/
 
 .airflow/airflow.db
 .airflow/airflow.db-shm
@@ -39,3 +40,4 @@ hrp.db
 uv.lock
 
 alembic/*.log
+

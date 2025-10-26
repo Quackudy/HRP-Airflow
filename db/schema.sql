@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS portfolios (
     stock_tickers JSONB NOT NULL,
     objective_function TEXT NOT NULL,
     rebalance_interval TEXT NOT NULL,
+    period TEXT NOT NULL,
     last_optimized_at TIMESTAMP WITH TIME ZONE,
     next_optimize_at TIMESTAMP WITH TIME ZONE
 );

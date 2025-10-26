@@ -161,6 +161,20 @@ async def report_html(
             # Clean up temporary file
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
+
+        style_tag = """
+        <style>
+            body, div, h1, h2, h3, h4, h5, p, span, li, th, td, table {
+                color: white !important;
+                background-color: transparent !important;
+            }
+            /* Keep table borders visible */
+            table, th, td {
+                border-color: #555 !important;
+            }
+        </style>
+        """
+        html = html.replace("</head>", f"{style_tag}</head>", 1)
         
     except Exception as e:
         logger.error(f"QuantStats report generation failed: {e}", exc_info=True)
