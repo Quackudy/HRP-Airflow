@@ -7,7 +7,7 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 export default function Dashboard() {
   const [portfolios, setPortfolios] = useState([])
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', description: '', stock_tickers: '', objective_function: 'HRP', rebalance_interval: 'monthly' })
+  const [form, setForm] = useState({ name: '', description: '', stock_tickers: '', objective_function: 'MV', rebalance_interval: 'monthly', period: '2y' })
 
   const token = localStorage.getItem('token')
   
@@ -41,7 +41,7 @@ export default function Dashboard() {
       }
   await api.post('/portfolios/', payload)
       setShowForm(false)
-      setForm({ name: '', description: '', stock_tickers: '', objective_function: 'HRP', rebalance_interval: 'monthly' })
+      setForm({ name: '', description: '', stock_tickers: '', objective_function: 'MV', rebalance_interval: 'monthly',  period: '2y' })
       load()
     } catch (err) {
       console.error('Failed to create portfolio:', err.response?.data || err.message)
@@ -61,13 +61,14 @@ export default function Dashboard() {
           <input placeholder='Name' value={form.name} onChange={e=>setForm({...form, name:e.target.value})} style={{ width:'100%', marginBottom:8 }} />
           <input placeholder='Description' value={form.description} onChange={e=>setForm({...form, description:e.target.value})} style={{ width:'100%', marginBottom:8 }} />
           <input placeholder='Tickers CSV (e.g., AAPL,MSFT,GOOGL)' value={form.stock_tickers} onChange={e=>setForm({...form, stock_tickers:e.target.value})} style={{ width:'100%', marginBottom:8 }} />
-          <input placeholder='Objective (HRP)' value={form.objective_function} onChange={e=>setForm({...form, objective_function:e.target.value})} style={{ width:'100%', marginBottom:8 }} />
+          <input placeholder='Objective function' value={form.objective_function} onChange={e=>setForm({...form, objective_function:e.target.value})} style={{ width:'100%', marginBottom:8 }} />
           <select value={form.rebalance_interval} onChange={e=>setForm({...form, rebalance_interval:e.target.value})} style={{ width:'100%', marginBottom:8 }}>
             <option value='daily'>Daily</option>
             <option value='weekly'>Weekly</option>
             <option value='monthly'>Monthly</option>
             <option value='quarterly'>Quarterly</option>
           </select>
+          <input placeholder='period' value={form.period} onChange={e=>setForm({...form, period:e.target.value})} style={{ width:'100%', marginBottom:8 }} />
           <button type='submit'>Create</button>
         </form>
       )}

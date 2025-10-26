@@ -23,6 +23,9 @@ export default function Portfolio() {
       const r = await api.get(`/portfolios/${id}/report/html`, { responseType: 'text' })
       setReportHtml(r.data)
     } catch (err) {
+      if (err.response?.status === 404) {
+        setError('This portfolio is not available. Please come back later.')
+      }
       console.error('Failed to load HTML report:', err.response?.data || err.message)
       setReportHtml('<p>Unable to load report</p>')
     }
