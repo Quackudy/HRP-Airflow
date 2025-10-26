@@ -1,30 +1,29 @@
-import React, { useState } from 'react'
-import api from '../api'
-import { useNavigate } from 'react-router-dom'
+'use client' // Must add this for client-side hooks
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import React, { useState } from 'react'
+import api from '../../lib/api' // Updated import path
+import { useRouter } from 'next/navigation' // Import useRouter
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isRegister, setIsRegister] = useState(false)
   const [error, setError] = useState('')
-  const navigate = useNavigate()
+  const router = useRouter() // Use router instead of navigate
 
   const submit = async (e) => {
     e.preventDefault()
     setError('')
     try {
-      if (isRegister) {
-        await axios.post(`${API}/auth/register`, { email, password })
-      }
+      
       const params = new URLSearchParams()
       params.append('username', email)
       params.append('password', password)
-  const res = await api.post('/auth/login', params)
-  // token will be stored locally; api interceptor will attach it to subsequent requests
-  localStorage.setItem('token', res.data.access_token)
-      navigate('/')
+      
+      const res = await api.post('/auth/login', params)
+      localStorage.setItem('token', res.data.access_token)
+      
+      router.push('/') // Use router.push() to navigate
     } catch (err) {
       setError(err?.response?.data?.detail || 'Error')
     }
@@ -45,5 +44,3 @@ export default function Login() {
     </div>
   )
 }
-
-

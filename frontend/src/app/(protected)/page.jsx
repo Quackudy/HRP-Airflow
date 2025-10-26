@@ -1,21 +1,18 @@
-import React, { useEffect, useState } from 'react'
-import api from '../api'
-import { Link } from 'react-router-dom'
+'use client' // Mark as client component
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import React, { useEffect, useState } from 'react'
+import api from '../../lib/api' // Updated path
+import Link from 'next/link' // Import from next/link
+import { useRouter } from 'next/navigation' // Import for 401 redirect
 
 export default function Dashboard() {
   const [portfolios, setPortfolios] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', description: '', stock_tickers: '', objective_function: 'MV', rebalance_interval: 'monthly', period: '2y' })
+  const router = useRouter() // Get router
 
-  const token = localStorage.getItem('token')
-  
-  // Redirect to login if no token
-  if (!token) {
-    window.location.href = '/login'
-    return null
-  }
+  // The auth check logic is now handled by layout.jsx
+  // We just need to load data.
   
   const load = async () => {
     try {
@@ -25,7 +22,7 @@ export default function Dashboard() {
       console.error('Failed to load portfolios:', err.response?.data || err.message)
       if (err.response?.status === 401) {
         localStorage.removeItem('token')
-        window.location.href = '/login'
+        router.push('/login') // Use router
       }
     }
   }
@@ -39,7 +36,7 @@ export default function Dashboard() {
         ...form,
         stock_tickers: form.stock_tickers.split(',').map(s => s.trim()).filter(Boolean)
       }
-  await api.post('/portfolios/', payload)
+      await api.post('/portfolios/', payload)
       setShowForm(false)
       setForm({ name: '', description: '', stock_tickers: '', objective_function: 'MV', rebalance_interval: 'monthly',  period: '2y' })
       load()
@@ -47,7 +44,7 @@ export default function Dashboard() {
       console.error('Failed to create portfolio:', err.response?.data || err.message)
       if (err.response?.status === 401) {
         localStorage.removeItem('token')
-        window.location.href = '/login'
+        router.push('/login') // Use router
       }
     }
   }
@@ -75,12 +72,11 @@ export default function Dashboard() {
       <ul>
         {portfolios.map(p => (
           <li key={p.id} style={{ marginTop: 8 }}>
-            <Link to={`/portfolio/${p.id}`}>{p.name}</Link>
+            {/* Use next/link */}
+            <Link href={`/portfolio/${p.id}`}>{p.name}</Link>
           </li>
         ))}
       </ul>
     </div>
   )
 }
-
-
